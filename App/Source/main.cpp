@@ -1,18 +1,19 @@
 #include <SDL3/SDL.h>
 #include <iostream>
+#include <list>
 
 #define MAX_WIDTH 800
 #define MAX_HEIGHT 600
 
-auto draw_grid(SDL_Renderer* renderer) -> void
+auto draw_grid(SDL_Renderer* renderer, float snake_cell_size) -> void
 {
 	SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
-	for (int x = 0; x < 800; x += 20) 
+	for (float x = 0; x < 800; x += snake_cell_size)
 	{
 		SDL_RenderLine(renderer, x, 0, x, 600);
 	}
 
-	for (int y = 0; y < 600; y += 20)
+	for (float y = 0; y < 600; y += snake_cell_size)
 	{
 		SDL_RenderLine(renderer, 0, y, 800, y);
 	}
@@ -32,25 +33,97 @@ int main(int, char**)
 	bool running = true;
 	SDL_Event e;
 
-	int snake_pos_x = MAX_WIDTH / 2;
-	int snake_pos_y = MAX_HEIGHT / 2;
+	float snake_size = 5;
+	float snake_cell_size = 10;
+
+	std::list<SDL_FRect> snake_body;
+	for(auto i = 0; i < snake_size - 1; ++i)
+	{
+		snake_body.push_back({ MAX_WIDTH / 2 - (i * snake_cell_size), MAX_HEIGHT / 2, snake_cell_size, snake_cell_size });
+	}
+
+
+	auto current_direction = SDLK_RIGHT;
+	auto previous_direction = current_direction;
 	while (running)
 	{
 		while (SDL_PollEvent(&e)) {
-			if (e.type == SDL_EVENT_QUIT)
+
+			switch (e.type)
+			{
+			case SDL_EVENT_KEY_DOWN:
+				switch (e.key.key)
+				{
+				case SDLK_RIGHT:
+					if(previous_direction != SDLK_LEFT)
+					{
+						previous_direction = current_direction;
+						current_direction = SDLK_RIGHT;
+						snake_body.push_front({ snake_body.front().x + snake_cell_size, snake_body.front().y, snake_cell_size, snake_cell_size });
+						snake_body.pop_back();
+					}
+
+					break;
+
+				case SDLK_LEFT:
+
+					if(previous_direction != SDLK_RIGHT)
+					{
+						previous_direction = current_direction;
+						current_direction = SDLK_LEFT;
+						snake_body.push_front({ snake_body.front().x - snake_cell_size, snake_body.front().y, snake_cell_size, snake_cell_size });
+						snake_body.pop_back();
+					}
+
+					break;
+				case SDLK_UP:
+					if (previous_direction != SDLK_DOWN)
+					{
+						previous_direction = current_direction;
+						current_direction = SDLK_UP;
+						snake_body.push_front({ snake_body.front().x, snake_body.front().y - snake_cell_size, snake_cell_size, snake_cell_size });
+						snake_body.pop_back();
+					}
+
+					break;
+				case SDLK_DOWN:
+
+					if (previous_direction != SDLK_UP)
+					{
+						previous_direction = current_direction;
+						current_direction = SDLK_DOWN;
+						snake_body.push_front({ snake_body.front().x, snake_body.front().y + snake_cell_size, snake_cell_size, snake_cell_size });
+						snake_body.pop_back();
+					}
+
+					break;
+				default:
+					break;
+				}
+				break;
+
+			case SDL_EVENT_QUIT:
 				running = false;
+				break;
+			default:
+				break;
+			}
+
+
 		}
 
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
 
 		// Draw grid for play area
-		draw_grid(renderer);
-		
-		// Draw snake initial position, by colouring a square
-		SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-		SDL_FRect snake_rect = { snake_pos_x, snake_pos_y, 20, 20 };
-		SDL_RenderFillRect(renderer, &snake_rect);
+		draw_grid(renderer, snake_cell_size);
+
+		// Draw snake body
+		SDL_SetRenderDrawColor(renderer, 0, 200, 0, 255);
+		for (const auto& segment : snake_body)
+		{
+			SDL_RenderFillRect(renderer, &segment);
+		}
 
 		SDL_RenderPresent(renderer);
 	}
