@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <SDL3/SDL_surface.h>
+#include <SDL3/SDL_main.h>
 #include <iostream>
 #include <list>
 
@@ -8,12 +9,98 @@
 #define MAX_PLAYFIELD_HEIGHT 600
 #define INFO_PANEL_HEIGHT 200
 #define INFO_PANEL_WIDTH 800
+#define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
 
 enum GameStatus
 {
 	Playing,
 	GameOver
 };
+
+///* We will use this renderer to draw into this window every frame. */
+//static SDL_Window* window = NULL;
+//static SDL_Renderer* renderer = NULL;
+//static SDL_AudioStream* stream = NULL;
+//static Uint8* wav_data = NULL;
+//static Uint32 wav_data_len = 0;
+//
+///* This function runs once at startup. */
+//SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[])
+//{
+//	SDL_AudioSpec spec;
+//	char* wav_path = NULL;
+//
+//	SDL_SetAppMetadata("Example Audio Load Wave", "1.0", "com.example.audio-load-wav");
+//
+//	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
+//		SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
+//		return SDL_APP_FAILURE;
+//	}
+//
+//	/* we don't _need_ a window for audio-only things but it's good policy to have one. */
+//	if (!SDL_CreateWindowAndRenderer("examples/audio/load-wav", 640, 480, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+//		SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
+//		return SDL_APP_FAILURE;
+//	}
+//	SDL_SetRenderLogicalPresentation(renderer, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+//
+//	/* Load the .wav file from wherever the app is being run from. */
+//	SDL_asprintf(&wav_path, "%ssample.wav", SDL_GetBasePath());  /* allocate a string of the full file path */
+//	if (!SDL_LoadWAV(wav_path, &spec, &wav_data, &wav_data_len)) {
+//		SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
+//		return SDL_APP_FAILURE;
+//	}
+//
+//	SDL_free(wav_path);  /* done with this string. */
+//
+//	/* Create our audio stream in the same format as the .wav file. It'll convert to what the audio hardware wants. */
+//	stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+//	if (!stream) {
+//		SDL_Log("Couldn't create audio stream: %s", SDL_GetError());
+//		return SDL_APP_FAILURE;
+//	}
+//
+//	/* SDL_OpenAudioDeviceStream starts the device paused. You have to tell it to start! */
+//	SDL_ResumeAudioStreamDevice(stream);
+//
+//	return SDL_APP_CONTINUE;  /* carry on with the program! */
+//}
+//
+///* This function runs when a new event (mouse input, keypresses, etc) occurs. */
+//SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
+//{
+//	if (event->type == SDL_EVENT_QUIT) {
+//		return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
+//	}
+//	return SDL_APP_CONTINUE;  /* carry on with the program! */
+//}
+//
+///* This function runs once per frame, and is the heart of the program. */
+//SDL_AppResult SDL_AppIterate(void* appstate)
+//{
+//	/* see if we need to feed the audio stream more data yet.
+//	   We're being lazy here, but if there's less than the entire wav file left to play,
+//	   just shove a whole copy of it into the queue, so we always have _tons_ of
+//	   data queued for playback. */
+//	if (SDL_GetAudioStreamQueued(stream) < (int)wav_data_len) {
+//		/* feed more data to the stream. It will queue at the end, and trickle out as the hardware needs more data. */
+//		SDL_PutAudioStreamData(stream, wav_data, wav_data_len);
+//	}
+//
+//	/* we're not doing anything with the renderer, so just blank it out. */
+//	SDL_RenderClear(renderer);
+//	SDL_RenderPresent(renderer);
+//
+//	return SDL_APP_CONTINUE;  /* carry on with the program! */
+//}
+//
+///* This function runs once at shutdown. */
+//void SDL_AppQuit(void* appstate, SDL_AppResult result)
+//{
+//	SDL_free(wav_data);  /* strictly speaking, this isn't necessary because the process is ending, but it's good policy. */
+//	/* SDL will clean up the window/renderer for us. */
+//}
+
 
 auto draw_grid(SDL_Renderer* renderer, float snake_cell_size) -> void
 {
@@ -114,25 +201,19 @@ int main(int, char**)
 	GameStatus game_status = GameStatus::Playing;
 	while (running)
 	{
-		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-		SDL_RenderClear(renderer);
-
-		// Draw grid for play area
-		draw_grid(renderer, snake_cell_size);
-		draw_info_panel(renderer);
-
-		if (game_status == GameStatus::GameOver)
+		// 1. Collect events
+		while (SDL_PollEvent(&e))
 		{
-			render_text(renderer, font, "Game Over! You hit the wall.", 200, 300);
-			SDL_RenderPresent(renderer);
-			continue;
-		}
-
-		while (SDL_PollEvent(&e)) {
-
 			switch (e.type)
 			{
 			case SDL_EVENT_KEY_DOWN:
+
+				if(game_status == GameStatus::GameOver)
+				{
+					running = false;
+					break;
+				}
+
 				switch (e.key.key)
 				{
 				case SDLK_RIGHT:
@@ -192,15 +273,25 @@ int main(int, char**)
 
 		}
 
+		// 2. Update game state
 		if (snake_body.front().x < 0 ||
 			snake_body.front().x + snake_cell_size > MAX_PLAYFIELD_WIDTH ||
 			snake_body.front().y < 0 ||
 			snake_body.front().y + snake_cell_size > MAX_PLAYFIELD_HEIGHT)
 		{
-			//render_text(renderer, "Game Over! You hit the wall.", 200, 300);
-			// running = false;
-			std::cout << "Game Over! You hit the wall.\n";
+			// std::cout << "Game Over! You hit the wall.\n";
 			game_status = GameStatus::GameOver;
+		}
+
+		// 3. Render
+		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+		SDL_RenderClear(renderer);
+
+		draw_grid(renderer, snake_cell_size);
+		draw_info_panel(renderer);
+		if (game_status == GameStatus::GameOver)
+		{
+			render_text(renderer, font, "Game Over! You hit the wall.", 200, 300);
 		}
 		else
 		{
@@ -218,4 +309,6 @@ int main(int, char**)
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
+
+	return 0;
 }
