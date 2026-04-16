@@ -12,10 +12,12 @@
 //#define INFO_PANEL_WIDTH 800
 //#define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
 
+constexpr int WINDOW_WIDTH = 800;
+constexpr int WINDOW_HEIGHT = 800;
 constexpr float MAX_PLAYFIELD_WIDTH = 800;
-constexpr float MAX_PLAYFIELD_HEIGHT = 600;
+constexpr float MAX_PLAYFIELD_HEIGHT = 700;
 constexpr float INFO_PANEL_WIDTH = 800;
-constexpr float INFO_PANEL_HEIGHT = 200;
+constexpr float INFO_PANEL_HEIGHT = 100;
 constexpr float CELL_SIZE = 10;
 
 enum GameStatus
@@ -179,7 +181,16 @@ auto is_equal(const SDL_FRect& a, const SDL_FRect& b) -> bool
 	return a.x == b.x && a.y == b.y;
 }
 
-auto random_position(std::list<SDL_FRect>& occupied) -> SDL_FRect
+auto is_colliding(const SDL_FRect& cell, const std::list<SDL_FRect>& snake_body) -> bool
+{
+	return std::find_if(snake_body.begin(), snake_body.end(),
+		[&cell](const SDL_FRect& segment)
+		{
+			return is_equal(cell, segment);
+		}) != snake_body.end();
+}
+
+auto random_position(std::list<SDL_FRect>& snake_body) -> SDL_FRect
 {
 	static std::random_device rd;
 	static std::mt19937 gen(rd());
@@ -192,11 +203,7 @@ auto random_position(std::list<SDL_FRect>& occupied) -> SDL_FRect
 		auto x = dis_x(gen);
 		auto y = dis_y(gen);
 		new_pos = SDL_FRect{ x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE };
-	} while (std::find_if(occupied.begin(), occupied.end(),
-		[&new_pos](const SDL_FRect& occupied_cell) 
-			{
-				return is_equal(new_pos, occupied_cell); 
-			}) != occupied.end());
+	} while (is_colliding(new_pos, snake_body));
 
 	return new_pos;
 }
@@ -209,7 +216,7 @@ int main(int, char**)
 		return 1;
 	}
 
-	SDL_Window* window = SDL_CreateWindow("Snake Game", 800, 800, 0);
+	SDL_Window* window = SDL_CreateWindow("Snake Game", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
 
 	if (!TTF_Init())
@@ -237,93 +244,115 @@ int main(int, char**)
 	}
 
 	auto current_direction = SDLK_RIGHT;
-	auto previous_direction = current_direction;
+	// auto previous_direction = current_direction;
+	auto keyed_input = current_direction;
 	auto is_food_available = false;
+	SDL_FRect new_head{};
 	GameStatus game_status = GameStatus::Playing;
 	SDL_FRect food_position = random_position(snake_body);
 	SDL_Event e{};
 	while (running)
 	{
-		// 1. Collect events
+		// 1. Collect events (no logic in this block, just event collection)
 		while (SDL_PollEvent(&e))
 		{
 			switch (e.type)
 			{
 			case SDL_EVENT_KEY_DOWN:
-
-				if (game_status == GameStatus::GameOver)
-				{
-					running = false;
-					break;
-				}
-
+			{
 				switch (e.key.key)
 				{
 				case SDLK_RIGHT:
 					if (current_direction != SDLK_LEFT)
 					{
-						previous_direction = current_direction;
 						current_direction = SDLK_RIGHT;
-						snake_body.push_front({ snake_body.front().x + CELL_SIZE, snake_body.front().y, CELL_SIZE, CELL_SIZE });
-						snake_body.pop_back();
 					}
-
 					break;
-
 				case SDLK_LEFT:
-
 					if (current_direction != SDLK_RIGHT)
 					{
-						previous_direction = current_direction;
 						current_direction = SDLK_LEFT;
-						snake_body.push_front({ snake_body.front().x - CELL_SIZE, snake_body.front().y, CELL_SIZE, CELL_SIZE });
-						snake_body.pop_back();
 					}
-
 					break;
 				case SDLK_UP:
 					if (current_direction != SDLK_DOWN)
 					{
-						previous_direction = current_direction;
 						current_direction = SDLK_UP;
-						snake_body.push_front({ snake_body.front().x, snake_body.front().y - CELL_SIZE, CELL_SIZE, CELL_SIZE });
-						snake_body.pop_back();
 					}
-
 					break;
 				case SDLK_DOWN:
-
 					if (current_direction != SDLK_UP)
 					{
-						previous_direction = current_direction;
 						current_direction = SDLK_DOWN;
-						snake_body.push_front({ snake_body.front().x, snake_body.front().y + CELL_SIZE, CELL_SIZE, CELL_SIZE });
-						snake_body.pop_back();
 					}
-
+					break;
+				case SDLK_RETURN:
+					keyed_input = SDLK_RETURN;
 					break;
 				default:
+					keyed_input = e.key.key;
 					break;
 				}
 				break;
-
+			}
 			case SDL_EVENT_QUIT:
 				running = false;
-				break;
 			default:
 				break;
 			}
-
 		}
 
-		// 2. Update game state
-		if (snake_body.front().x < 0 ||
-			snake_body.front().x + CELL_SIZE > MAX_PLAYFIELD_WIDTH ||
-			snake_body.front().y < 0 ||
-			snake_body.front().y + CELL_SIZE > MAX_PLAYFIELD_HEIGHT)
+
+		// 2. Update game state such as snake movement, food spawning, and collision detection
+		if (game_status == GameStatus::GameOver &&
+			keyed_input == SDLK_RETURN)
+		{
+			running = false;
+			break;
+		}
+
+		// Always create a new head in the current direction.
+		new_head = snake_body.front();
+		switch (current_direction)
+		{
+		case SDLK_RIGHT:
+			new_head = { snake_body.front().x + CELL_SIZE, snake_body.front().y, CELL_SIZE, CELL_SIZE };
+			break;
+		case SDLK_LEFT:
+			new_head = { snake_body.front().x - CELL_SIZE, snake_body.front().y, CELL_SIZE, CELL_SIZE };
+			break;
+		case SDLK_UP:
+			new_head = { snake_body.front().x, snake_body.front().y - CELL_SIZE, CELL_SIZE, CELL_SIZE };
+			break;
+		case SDLK_DOWN:
+			new_head = { snake_body.front().x, snake_body.front().y + CELL_SIZE, CELL_SIZE, CELL_SIZE };
+			break;
+		default:
+			break;
+		}
+
+		// Update game status
+		if (new_head.x < 0 ||
+			new_head.x + CELL_SIZE > MAX_PLAYFIELD_WIDTH ||
+			new_head.y < 0 ||
+			new_head.y + CELL_SIZE > MAX_PLAYFIELD_HEIGHT ||
+			is_colliding(new_head, snake_body))
 		{
 			// std::cout << "Game Over! You hit the wall.\n";
 			game_status = GameStatus::GameOver;
+		}
+		else
+		{
+			snake_body.push_front(new_head);
+			if (!is_equal(new_head, food_position))
+			{
+				snake_body.pop_back();
+			}
+			else
+			{
+				is_food_available = false;
+				++snake_size;
+			}
 		}
 
 		if (!is_food_available)
@@ -332,8 +361,7 @@ int main(int, char**)
 			is_food_available = true;
 		}
 
-
-		// 3. Render
+		// 3. Render; only rendering, no logic in this block
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
 
@@ -341,7 +369,7 @@ int main(int, char**)
 		draw_info_panel(renderer);
 		if (game_status == GameStatus::GameOver)
 		{
-			render_text(renderer, font, "Game Over! You hit the wall.", 200, 300);
+			render_text(renderer, font, "Game Over! You hit the wall or yourself.", 200, 300);
 		}
 		else
 		{
@@ -358,6 +386,8 @@ int main(int, char**)
 
 		}
 		SDL_RenderPresent(renderer);
+
+		SDL_Delay(150);
 	}
 
 	SDL_DestroyRenderer(renderer);
